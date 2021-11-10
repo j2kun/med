@@ -1,6 +1,4 @@
-/**
- * Ned is an integer Number EDitor using med. Just a silly example.
- */
+/** Ned is an integer Number EDitor using med. Just a silly example.  */
 use med::document::Diff;
 use med::document::Document;
 use med::document::Operation;
@@ -92,7 +90,7 @@ impl NedDoc {
     }
 
     fn select_other(&self, other: usize) -> Result<usize, &str> {
-        if other < 0 || other > self.xs.len() || other == self.cursor {
+        if other > self.xs.len() || other == self.cursor {
             return Err("Cannot apply operation. There are not enough arguments.");
         }
         Ok(other)
