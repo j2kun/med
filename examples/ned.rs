@@ -39,34 +39,88 @@ pub struct NedDiff {
     new_cursor: usize,
 }
 
-#[derive(Debug)]
-enum NedOp {
-    // Move the cursor left/right
-    CursorLeft,
-    CursorRight,
-    // add/subtract 1 to the number under the cursor
-    Increment,
-    Decrement,
+#[derive(Debug, Copy, Clone)]
+pub enum NedOp {
+    // Editing ops come first, to allow easy discrimination
+    Increment = 0,
+    Decrement = 1,
     // Set current number to zero
-    Zero,
+    Zero = 2,
     // duplicate the number under the cursor
-    Duplicate,
+    Duplicate = 3,
     // add/subtract/multiply the number under the cursor to the next number in the document, merging the two
     // numbers into one entry.
-    AddNext,
-    SubtractNext,
-    MultiplyNext,
+    AddNext = 4,
+    SubtractNext = 5,
+    MultiplyNext = 6,
     // ditto for the previous number
-    AddPrev,
-    SubtractPrev,
-    MultiplyPrev,
+    AddPrev = 7,
+    SubtractPrev = 8,
+    MultiplyPrev = 9,
+
+    // Casting NedOp as u32 allows to check membership
+    // in the above list as follows:
+    //
+    // (op as u32) <= 9
+
+    // Non-editing ops come last
+    //
+    // Move the cursor left/right
+    CursorLeft = 10,
+    CursorRight = 11,
+    // add/subtract 1 to the number under the cursor
 }
 
 use AtomicChange::*;
 use NedOp::*;
 
-impl Operation for NedOp {}
-impl Diff for NedDiff {}
+impl Operation for NedOp {
+    fn undo() -> Self {
+        return NedOp::Undo;
+    }
+
+    fn redo() -> Self {
+        return NedOp::Redo;
+    }
+
+    fn is_edit(&self) -> bool {
+        return (*self as u32) <= 9;
+    }
+}
+
+impl AtomicChange {
+    pub fn invert(&self) -> AtomicChange {
+        match self {
+            ModifyEntry {
+                index,
+                old_value,
+                new_value,
+            } => ModifyEntry {
+                index: *index,
+                old_value: *new_value,
+                new_value: *old_value,
+            },
+            InsertValue { index, value } => DeleteAt {
+                index: *index,
+                value: *value,
+            },
+            DeleteAt { index, value } => InsertValue {
+                index: *index,
+                value: *value,
+            },
+        }
+    }
+}
+
+impl Diff for NedDiff {
+    fn invert(&self) -> Self {
+        NedDiff {
+            changes: self.changes.iter().rev().map(|c| c.invert()).collect(),
+            old_cursor: self.new_cursor,
+            new_cursor: self.old_cursor,
+        }
+    }
+}
 
 impl NedDoc {
     fn cursor_only(&self, next_cursor_loc: usize) -> Box<NedDiff> {
@@ -140,7 +194,11 @@ impl Document<NedOp, NedDiff> for NedDoc {
         }
     }
 
-    fn apply(&self, op: NedOp) -> Result<Box<NedDiff>, &str> {
+    fn apply(&mut self, diff: &NedDiff) {
+        // TODO: implement
+    }
+
+    fn interpret(&self, op: NedOp) -> Result<Box<NedDiff>, &str> {
         match op {
             CursorLeft => Ok(self.cursor_only((self.cursor + 1) % self.xs.len())),
             CursorRight => Ok(self.cursor_only((self.cursor - 1) % self.xs.len())),
@@ -162,6 +220,13 @@ impl Document<NedOp, NedDiff> for NedDoc {
             SubtractPrev => self.merge_with_offset(1, -1, |x, y| x - y),
             MultiplyPrev => self.merge_with_offset(1, -1, |x, y| x * y),
         }
+    }
+
+    fn render(&self) {
+        // Try https://docs.rs/ansi_term/latest/ansi_term/ for cursor highlight.
+        let mut strs: Vec<String> = self.xs.iter().map(|x| format!("{}", x)).collect();
+        strs[self.cursor] = format!("^{}", strs[self.cursor]); 
+        println!("{}", strs.join(","));
     }
 }
 
